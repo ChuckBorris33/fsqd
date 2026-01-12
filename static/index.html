@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en" class="h-full">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>FSQD - FastHare.Cloud Downloader</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/icon?family=Material+Icons"
+            rel="stylesheet"
+        />
+        <style>
+            .material-icons {
+                font-size: 20px;
+                vertical-align: middle;
+            }
+            .btn-icon {
+                @apply p-2 rounded-full hover:bg-white/10 transition-colors;
+            }
+            .btn-icon:disabled {
+                @apply text-muted-foreground cursor-not-allowed hover:bg-transparent;
+            }
+        </style>
+        <script>
+            tailwind.config = {
+                theme: {
+                    extend: {
+                        colors: {
+                            background: "#1f2430",
+                            surface: "#242936",
+                            foreground: "#cbccc6",
+                            "muted-foreground": "#5c6773",
+                            primary: {
+                                DEFAULT: "#ffad40",
+                                foreground: "#1f2430",
+                            },
+                            destructive: "#ff5c57",
+                            green: "#bae67e",
+                            blue: "#73d0ff",
+                            yellow: "#ffd580",
+                        },
+                        fontFamily: {
+                            sans: ["Roboto", "sans-serif"],
+                        },
+                    },
+                },
+            };
+        </script>
+    </head>
+    <body class="h-full bg-background text-foreground font-sans">
+        <div class="min-h-full flex flex-col">
+            <!-- Header -->
+            <header class="bg-surface shadow-md">
+                <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                    <h1
+                        class="text-2xl font-bold text-foreground flex items-center gap-2"
+                    >
+                        <span
+                            class="material-icons text-primary"
+                            style="font-size: 28px"
+                            >download_for_offline</span
+                        >
+                        FSQD - fastshare.cloud Downloader
+                    </h1>
+                </div>
+            </header>
+
+            <!-- Main Content -->
+            <main
+                class="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8"
+            >
+                <!-- Input Section -->
+                <div class="bg-surface rounded-xl shadow-lg p-6 mb-8">
+                    <label
+                        for="link-input"
+                        class="block text-sm font-medium text-foreground mb-2"
+                        >FastShare Link</label
+                    >
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <input
+                            type="url"
+                            id="link-input"
+                            name="url"
+                            placeholder="https://fastshare.cloud/..."
+                            class="flex-1 px-4 py-2 bg-background border border-muted-foreground/30 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                        />
+                        <button
+                            hx-post="/api/queue"
+                            hx-include="#link-input"
+                            hx-target="#queue-list"
+                            hx-swap="innerHTML"
+                            class="px-5 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background transition-colors flex items-center justify-center gap-2"
+                        >
+                            <span class="material-icons">add_to_queue</span>
+                            Add to Queue
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Queue Section -->
+                <div
+                    id="queue-container"
+                    class="bg-surface rounded-xl shadow-lg p-6"
+                >
+                    <div
+                        id="queue-list"
+                        class="space-y-3"
+                        hx-get="/api/queue"
+                        hx-trigger="load, every 2s"
+                        hx-swap="innerHTML"
+                    >
+                        <!-- Queue items will be populated by queue.html -->
+                        <div class="text-muted-foreground text-center py-10">
+                            <div class="material-icons text-5xl mb-2">
+                                hourglass_empty
+                            </div>
+                            <div>Loading queue...</div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </body>
+</html>

@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  fsqd:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount local directories for persistent storage
+      - ./data/downloads:/downloads
+      - ./data/cache:/cache
+    environment:
+      # Environment variables to configure the application inside the container
+      - HOST=0.0.0.0
+      - PORT=8080
+      - DOWNLOAD_DIR=/downloads
+      - CACHE_DIR=/cache

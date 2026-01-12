@@ -1,0 +1,175 @@
+{% macro render_item(item, first_pending_id=None, last_pending_id=None) %}
+    {% set status_config = {
+        "pending": {"color": "bg-yellow text-background", "icon": "hourglass_top"},
+        "downloading": {"color": "bg-blue text-background", "icon": "downloading"},
+        "completed": {"color": "bg-green text-background", "icon": "check_circle"},
+        "failed": {"color": "bg-destructive text-background", "icon": "error"},
+        "downloaded": {"color": "bg-green-400 text-background", "icon": "download_done"}
+    } %}
+    {% set config = status_config.get(item.status, {"color": "bg-muted-foreground", "icon": "help"}) %}
+
+    <div class="bg-background/50 rounded-lg p-4 transition-shadow mb-3 border border-transparent hover:border-primary/50">
+        <div class="flex items-start justify-between">
+            <div class="flex-1 min-w-0">
+                <h3 class="font-medium text-foreground truncate pr-4">
+                    {{ item.get("title", "Unknown") }}
+                </h3>
+                <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer" class="text-sm text-blue hover:underline truncate">
+                    {{ item.url }}
+                </a>
+            </div>
+
+            <div class="ml-4 flex items-center gap-1">
+                {% if item.status == "pending" %}
+                    {% set is_first = item.id == first_pending_id %}
+                    {% set is_last = item.id == last_pending_id %}
+                    <button
+                        hx-post="/api/queue/move" hx-vals='{"item_id": "{{ item.id }}", "direction": "up"}'
+                        hx-target="#queue-list" hx-swap="innerHTML"
+                        class="btn-icon" title="Move up"
+                        {% if is_first %}disabled{% endif %}>
+                        <span class="material-icons">arrow_upward</span>
+                    </button>
+                    <button
+                        hx-post="/api/queue/move" hx-vals='{"item_id": "{{ item.id }}", "direction": "down"}'
+                        hx-target="#queue-list" hx-swap="innerHTML"
+                        class="btn-icon" title="Move down"
+                        {% if is_last %}disabled{% endif %}>
+                        <span class="material-icons">arrow_downward</span>
+                    </button>
+                {% elif item.status == "downloading" %}
+                    <button
+                        hx-post="/api/queue/cancel" hx-vals='{"item_id": "{{ item.id }}"}'
+                        hx-target="#queue-list" hx-swap="innerHTML"
+                        class="btn-icon text-destructive" title="Cancel download">
+                        <span class="material-icons">cancel</span>
+                    </button>
+                {% elif item.status == "failed" %}
+                    <button
+                        hx-post="/api/queue/retry" hx-vals='{"item_id": "{{ item.id }}"}'
+                        hx-target="#queue-list" hx-swap="innerHTML"
+                        class="btn-icon text-blue" title="Retry">
+                        <span class="material-icons">refresh</span>
+                    </button>
+                {% endif %}
+
+                {% if item.status not in ["downloading", "downloaded", "completed"] %}
+                    <button
+                        hx-post="/api/queue/remove" hx-vals='{"item_id": "{{ item.id }}"}'
+                        hx-target="#queue-list" hx-swap="innerHTML"
+                        class="btn-icon text-destructive" title="Remove">
+                        <span class="material-icons">delete</span>
+                    </button>
+                {% endif %}
+
+                {% if item.status == "downloaded" %}
+                    <a href="/downloads/{{ item.get('filename') | urlencode }}" download
+                       class="btn-icon text-green" title="Download file">
+                        <span class="material-icons">download</span>
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if item.status == "downloading" %}
+        <div class="mt-3">
+            <div class="flex justify-between text-xs text-muted-foreground mb-1">
+                <span>{{ item.get("progress", 0) }}% complete</span>
+                <span>{{ item.speed or "..." }}</span>
+            </div>
+            <div class="w-full bg-background rounded-full h-1.5">
+                <div class="bg-blue h-1.5 rounded-full" style="width: {{ item.get("progress", 0) }}%"></div>
+            </div>
+        </div>
+        {% elif item.status == "downloaded" or item.status == "completed" %}
+        <div class="mt-3">
+             <div class="w-full bg-background rounded-full h-1.5">
+                <div class="bg-green h-1.5 rounded-full" style="width: 100%"></div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+            <span>Added: {{ item.added_at }}</span>
+             <div class="flex items-center gap-2">
+                 {% if item.get("size") %}
+                 <span>{{ item.get("size") }}</span>
+                 {% endif %}
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-medium {{ config.color }}">
+                    <span class="material-icons" style="font-size: 14px;">{{ config.icon }}</span>
+                    {{ item.status }}
+                </span>
+            </div>
+        </div>
+
+        {% if item.status == "failed" and item.error %}
+        <div class="text-xs text-destructive mt-2 p-2 bg-destructive/10 rounded">Error: {{ item.error }}</div>
+        {% endif %}
+    </div>
+{% endmacro %}
+
+<div id="queue-list">
+    {# --- Active Download --- #}
+    {% set downloading_item = (active | selectattr("status", "equalto", "downloading") | list | first) %}
+    {% if downloading_item %}
+        <h2 class="text-xl font-bold text-foreground mb-3 flex items-center gap-2">
+            <span class="material-icons text-primary">drive_file_move</span>
+            Active Download
+        </h2>
+        {{ render_item(downloading_item) }}
+    {% endif %}
+
+    {# --- Queued Items --- #}
+    {% set queued_items = active | selectattr("status", "equalto", "pending") | list %}
+    <h2 class="text-xl font-bold text-foreground mb-3 mt-6 flex items-center gap-2">
+        <span class="material-icons text-primary">queue</span>
+        Queue
+    </h2>
+    {% if queued_items and queued_items|length > 0 %}
+        {% set first_pending_id = queued_items[0].id %}
+        {% set last_pending_id = queued_items[-1].id %}
+        {% for item in queued_items %}
+            {{ render_item(item, first_pending_id, last_pending_id) }}
+        {% endfor %}
+    {% else %}
+        <div class="text-muted-foreground text-center py-6">
+            <div class="material-icons text-4xl mb-2">inbox</div>
+            <div>The queue is empty. Add a link to get started.</div>
+        </div>
+    {% endif %}
+
+    {# --- History --- #}
+    {% set finished_items = (completed + failed) | sort(attribute='added_at', reverse=True) %}
+    <div class="flex items-center justify-between mt-8 mb-3">
+        <h2 class="text-xl font-bold text-foreground flex items-center gap-2">
+            <span class="material-icons text-primary">history</span>
+            History
+        </h2>
+        <div>
+            {% if failed|length > 0 %}
+            <button
+                hx-post="/api/queue/clear_failed" hx-target="#queue-list" hx-swap="innerHTML"
+                class="text-xs px-3 py-1 bg-destructive/20 text-destructive rounded-md hover:bg-destructive/30 transition-colors mr-2">
+                Clear Failed
+            </button>
+            {% endif %}
+            {% if completed|length > 0 %}
+            <button
+                hx-post="/api/queue/clear_completed" hx-target="#queue-list" hx-swap="innerHTML"
+                class="text-xs px-3 py-1 bg-green/20 text-green rounded-md hover:bg-green/30 transition-colors">
+                Clear Completed
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    {% if finished_items and finished_items|length > 0 %}
+        {% for item in finished_items %}
+            {{ render_item(item) }}
+        {% endfor %}
+    {% else %}
+        <div class="text-muted-foreground text-center py-6">
+            <div class="material-icons text-4xl mb-2">history_toggle_off</div>
+            <div>Your download history is empty.</div>
+        </div>
+    {% endif %}
+</div>

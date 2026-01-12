@@ -1,0 +1,15 @@
+[project]
+name = "fsqd"
+version = "0.1.0"
+description = "Web UI for queuing downloads from fasthare.cloud"
+authors = [
+    { name = "Boris", email = "boris@example.com" }
+]
+dependencies = [
+    "aiohttp",
+    "aiohttp-jinja2>=1.6",
+    "bs4",
+    "diskcache>=5.6.3",
+    "requests",
+]
+requires-python = ">=3.10"
