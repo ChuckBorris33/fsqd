@@ -4,10 +4,13 @@ import os
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", 8080))
 
+# --- Logging Configuration ---
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+
 # --- Directory Configuration ---
 # Use absolute paths for Docker compatibility
-DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "/downloads")
-CACHE_DIR = os.environ.get("CACHE_DIR", "/cache")
+DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "downloads")
+CACHE_DIR = os.environ.get("CACHE_DIR", "cache")
 
 # --- Storage Configuration ---
 ACTIVE_KEY = "queue_active"

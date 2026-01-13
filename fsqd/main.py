@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime
 
@@ -10,6 +11,7 @@ from fsqd.download import (
     cancel_download,
     start_download_worker,
 )
+from fsqd.log import setup_logging
 from fsqd.metadata import extract_file_info
 from fsqd.storage import (
     QueueItem,
@@ -66,16 +68,19 @@ async def get_queue(request: web.Request) -> dict:
 
 async def add_to_queue_handler(request: web.Request) -> web.StreamResponse:
     data = await request.post()
-    url_val = data.get("link-input", "")
+    url_val = data.get("url", "")
     url = url_val.decode() if isinstance(url_val, bytes) else str(url_val)
     url = url.strip()
 
     if not url:
+        logging.warning("URL is required")
         return web.Response(text="URL is required", status=400)
     if "fastshare.cloud" not in url:
+        logging.warning(f"URL not allowed: {url}")
         return web.Response(text="Only fastshare.cloud links are allowed", status=400)
 
     title, size = await extract_file_info(url)
+    logging.info(f"Adding {title} to queue")
 
     new_item: QueueItem = {
         "id": str(uuid.uuid4()),
@@ -96,7 +101,9 @@ async def remove_item_handler(request: web.Request) -> web.StreamResponse:
     data = await request.post()
     item_id = str(data.get("item_id", "")).strip()
     if not item_id:
+        logging.warning("Item ID is required")
         return web.Response(text="Item ID is required", status=400)
+    logging.info(f"Removing item {item_id} from queue")
     await remove_from_queue(item_id)
     return await get_queue(request)
 
@@ -106,17 +113,21 @@ async def move_item_handler(request: web.Request) -> web.StreamResponse:
     item_id = str(data.get("item_id", "")).strip()
     direction = str(data.get("direction", "")).strip()
     if not item_id or direction not in ["up", "down"]:
+        logging.warning("Invalid parameters for move")
         return web.Response(text="Invalid parameters", status=400)
+    logging.info(f"Moving item {item_id} {direction}")
     await move_in_queue(item_id, direction)
     return await get_queue(request)
 
 
 async def clear_failed_handler(request: web.Request) -> web.StreamResponse:
+    logging.info("Clearing failed items")
     await clear_failed()
     return await get_queue(request)
 
 
 async def clear_completed_handler(request: web.Request) -> web.StreamResponse:
+    logging.info("Clearing completed items")
     await clear_completed()
     return await get_queue(request)
 
@@ -125,7 +136,9 @@ async def retry_item_handler(request: web.Request) -> web.StreamResponse:
     data = await request.post()
     item_id = str(data.get("item_id", "")).strip()
     if not item_id:
+        logging.warning("Item ID is required for retry")
         return web.Response(text="Item ID is required", status=400)
+    logging.info(f"Retrying item {item_id}")
     await retry_failed(item_id)
     with progress_store_lock:
         progress_store[item_id] = {"progress": 0, "speed": ""}
@@ -136,7 +149,9 @@ async def cancel_download_handler(request: web.Request) -> web.StreamResponse:
     data = await request.post()
     item_id = str(data.get("item_id", "")).strip()
     if not item_id:
+        logging.warning("Item ID is required for cancel")
         return web.Response(text="Item ID is required", status=400)
+    logging.info(f"Canceling download {item_id}")
     await cancel_download(item_id)
     return await get_queue(request)
 
@@ -163,12 +178,13 @@ def create_app() -> web.Application:
         try:
             # Reset progress for all active items
             active = await get_active()
+            logging.info(f"Resetting progress for {len(active)} active items")
             with progress_store_lock:
                 for item in active:
                     progress_store[item["id"]] = {"progress": 0}
 
-        except Exception:
-            pass
+        except Exception as e:
+            logging.error(f"Error on cleanup: {e}")
 
         app.on_cleanup.append(cleanup_on_shutdown)
 
@@ -182,6 +198,7 @@ if __name__ == "__main__":
     from fsqd.config import DOWNLOAD_DIR, HOST, PORT
 
     # --- Initialization ---
+    setup_logging()
     downloads_path = Path(DOWNLOAD_DIR)
     downloads_path.mkdir(exist_ok=True)
 
@@ -191,7 +208,7 @@ if __name__ == "__main__":
     app = create_app()
     app.router.add_static("/downloads", path=downloads_path, name="downloads")
 
-    print(f"FSQD Server running on http://{HOST}:{PORT}")
-    print(f"Downloads directory: {downloads_path.resolve()}")
+    logging.info(f"FSQD Server running on http://{HOST}:{PORT}")
+    logging.info(f"Downloads directory: {downloads_path.resolve()}")
 
     web.run_app(app, host=HOST, port=PORT)

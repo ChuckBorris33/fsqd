@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import threading
 import time
@@ -30,9 +31,10 @@ download_cancel_events_lock = asyncio.Lock()
 
 async def download_file(item_id: str, url: str) -> None:
     """Download file from FastShare link"""
-
+    logging.info(f"Starting download for item {item_id}")
     item = await _get_pending_item(item_id)
     if not item:
+        logging.warning(f"Item {item_id} not found or not pending")
         return
 
     await mark_downloading(item_id)
@@ -44,11 +46,13 @@ async def download_file(item_id: str, url: str) -> None:
         async with aiohttp.ClientSession() as session:
             form_action = await _get_download_form(session, url)
             if not form_action:
+                logging.error(f"Could not get download form for {url}")
                 await mark_failed(item_id, "Could not get download form")
                 return
 
             await _perform_download(session, item_id, form_action, item, cancel_event)
     except Exception as e:
+        logging.error(f"Error downloading {item_id}: {e}")
         await mark_failed(item_id, str(e))
     finally:
         await _cleanup_cancel_event(item_id)
@@ -123,6 +127,7 @@ async def _download_file_content(
         "application/octet-stream" in content_type
         or "application/force-download" in content_type
     ):
+        logging.warning(f"Invalid content type for download: {content_type}")
         return
 
     filename = item.get("title", "download")
@@ -131,6 +136,7 @@ async def _download_file_content(
     ).rstrip()
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     filepath = os.path.join(DOWNLOAD_DIR, filename)
+    logging.info(f"Saving download to {filepath}")
 
     total_size = int(response.headers.get("Content-Length", 0))
     downloaded = 0
@@ -141,6 +147,7 @@ async def _download_file_content(
     with open(filepath, "wb") as f:
         async for chunk in response.content.iter_chunked(DOWNLOAD_CHUNK_SIZE):
             if cancel_event.is_set():
+                logging.info(f"Download cancelled by user: {item_id}")
                 await mark_failed(item_id, "Download cancelled by user")
                 return
             f.write(chunk)
@@ -177,6 +184,7 @@ async def _download_file_content(
 
     await update_item_progress(item_id, 100, "")
     await mark_completed(item_id)
+    logging.info(f"Download completed for item {item_id}")
 
 
 async def _perform_download(
@@ -191,6 +199,7 @@ async def _perform_download(
         form_action, data={}, headers=headers, timeout=None
     ) as response:
         if response.status != 200:
+            logging.error(f"Download request failed for {item_id}: {response.status}")
             await mark_failed(item_id, f"Download request failed: {response.status}")
             return
 
@@ -199,6 +208,7 @@ async def _perform_download(
 
 async def download_worker() -> None:
     """Background worker that processes the download queue"""
+    logging.info("Download worker started")
     while True:
         try:
             active = await get_active()
@@ -212,18 +222,22 @@ async def download_worker() -> None:
                     break
 
             if pending_item:
+                logging.info(f"Processing item {pending_item['id']}")
                 # Download the file
                 await download_file(pending_item["id"], pending_item["url"])
+                await asyncio.sleep(30)  # Short pause before next item
             else:
                 # No pending items, wait
                 await asyncio.sleep(2)
 
-        except Exception:
+        except Exception as e:
+            logging.error(f"Error in download worker: {e}")
             await asyncio.sleep(5)
 
 
 def start_download_worker() -> None:
     """Start the download worker in a separate thread"""
+    logging.info("Starting download worker thread")
 
     def run_worker():
         loop = asyncio.new_event_loop()
@@ -236,6 +250,7 @@ def start_download_worker() -> None:
 
 async def cancel_download(item_id: str) -> None:
     """Cancel a currently downloading item"""
+    logging.info(f"Cancelling download for item {item_id}")
     # Signal cancellation
     async with download_cancel_events_lock:
         event = download_cancel_events.get(item_id)
