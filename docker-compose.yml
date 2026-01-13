@@ -7,8 +7,8 @@ services:
       - "8080:8080"
     volumes:
       # Mount local directories for persistent storage
-      - ./data/downloads:/downloads
-      - ./data/cache:/cache
+      - ./data/downloads:/downloads,z
+      - ./data/cache:/cache,z
     environment:
       # Environment variables to configure the application inside the container
       - HOST=0.0.0.0
