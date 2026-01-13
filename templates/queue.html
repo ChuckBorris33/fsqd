@@ -78,7 +78,7 @@
                 <span>{{ item.speed or "..." }}</span>
             </div>
             <div class="w-full bg-background rounded-full h-1.5">
-                <div class="bg-blue h-1.5 rounded-full" style="width: {{ item.get("progress", 0) }}%"></div>
+                <div class="bg-blue h-1.5 rounded-full" style="width: {{ item.get('progress', 0) }}%"></div>
             </div>
         </div>
         {% elif item.status == "downloaded" or item.status == "completed" %}
@@ -125,7 +125,7 @@
         <span class="material-icons text-primary">queue</span>
         Queue
     </h2>
-    {% if queued_items and queued_items|length > 0 %}
+    {% if queued_items %}
         {% set first_pending_id = queued_items[0].id %}
         {% set last_pending_id = queued_items[-1].id %}
         {% for item in queued_items %}
@@ -146,14 +146,14 @@
             History
         </h2>
         <div>
-            {% if failed|length > 0 %}
+            {% if failed %}
             <button
                 hx-post="/api/queue/clear_failed" hx-target="#queue-list" hx-swap="innerHTML"
                 class="text-xs px-3 py-1 bg-destructive/20 text-destructive rounded-md hover:bg-destructive/30 transition-colors mr-2">
                 Clear Failed
             </button>
             {% endif %}
-            {% if completed|length > 0 %}
+            {% if completed %}
             <button
                 hx-post="/api/queue/clear_completed" hx-target="#queue-list" hx-swap="innerHTML"
                 class="text-xs px-3 py-1 bg-green/20 text-green rounded-md hover:bg-green/30 transition-colors">
@@ -162,7 +162,7 @@
             {% endif %}
         </div>
     </div>
-    {% if finished_items and finished_items|length > 0 %}
+    {% if finished_items %}
         {% for item in finished_items %}
             {{ render_item(item) }}
         {% endfor %}
