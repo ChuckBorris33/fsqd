@@ -116,6 +116,18 @@ def _format_speed(speed_bps: float) -> str:
         return f"{speed_bps:.1f} B/s"
 
 
+def _is_valid_content_type(content_type: str) -> bool:
+    """Check if content type is valid for download"""
+    return any(
+        content_type.startswith(prefix)
+        for prefix in [
+            "application/octet-stream",
+            "application/force-download",
+            "video/",
+            "audio/",
+        ]
+    ) or "application/octet-stream" in content_type
+
 async def _download_file_content(
     response: aiohttp.ClientResponse,
     item_id: str,
@@ -124,21 +136,13 @@ async def _download_file_content(
 ) -> None:
     content_type = response.headers.get("Content-Type", "").lower()
     
-    # Check for valid content types
-    if not (
-        "application/octet-stream" in content_type
-        or "application/force-download" in content_type
-        or content_type.startswith("video/")
-        or content_type.startswith("audio/")
-    ):
+    if not _is_valid_content_type(content_type):
         logging.warning(f"Unexpected content type: {content_type}")
         if "text/html" in content_type:
-            # HTML response indicates we need to retry
             await _handle_html_response(response, item_id, item, cancel_event)
             return
-        else:
-            await mark_failed(item_id, f"Invalid content type: {content_type}")
-            return
+        await mark_failed(item_id, f"Invalid content type: {content_type}")
+        return
 
     # Rest of the existing download logic...
     filename = item.get("title", "download")
@@ -251,6 +255,15 @@ async def _perform_download(
         if response.status != 200:
             logging.error(f"Download request failed for {item_id}: {response.status}")
             await mark_failed(item_id, f"Download request failed: {response.status}")
+            return
+
+        content_type = response.headers.get("Content-Type", "").lower()
+        if not _is_valid_content_type(content_type):
+            logging.warning(f"Unexpected content type: {content_type}")
+            if "text/html" in content_type:
+                await _handle_html_response(response, item_id, item, cancel_event)
+                return
+            await mark_failed(item_id, f"Invalid content type: {content_type}")
             return
 
         await _download_file_content(response, item_id, item, cancel_event)
