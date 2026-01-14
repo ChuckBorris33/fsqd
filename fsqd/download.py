@@ -134,16 +134,8 @@ async def _download_file_content(
     item: QueueItem,
     cancel_event: asyncio.Event,
 ) -> None:
-    content_type = response.headers.get("Content-Type", "").lower()
+    # Content type check removed since it's already done in _perform_download
     
-    if not _is_valid_content_type(content_type):
-        logging.warning(f"Unexpected content type: {content_type}")
-        if "text/html" in content_type:
-            await _handle_html_response(response, item_id, item, cancel_event)
-            return
-        await mark_failed(item_id, f"Invalid content type: {content_type}")
-        return
-
     # Rest of the existing download logic...
     filename = item.get("title", "download")
     filename = "".join(
