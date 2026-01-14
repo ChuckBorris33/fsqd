@@ -122,14 +122,25 @@ async def _download_file_content(
     item: QueueItem,
     cancel_event: asyncio.Event,
 ) -> None:
-    content_type = response.headers.get("Content-Type", "")
+    content_type = response.headers.get("Content-Type", "").lower()
+    
+    # Check for valid content types
     if not (
         "application/octet-stream" in content_type
         or "application/force-download" in content_type
+        or content_type.startswith("video/")
+        or content_type.startswith("audio/")
     ):
-        logging.warning(f"Invalid content type for download: {content_type}")
-        return
+        logging.warning(f"Unexpected content type: {content_type}")
+        if "text/html" in content_type:
+            # HTML response indicates we need to retry
+            await _handle_html_response(response, item_id, item, cancel_event)
+            return
+        else:
+            await mark_failed(item_id, f"Invalid content type: {content_type}")
+            return
 
+    # Rest of the existing download logic...
     filename = item.get("title", "download")
     filename = "".join(
         c for c in filename if c.isalnum() or c in (" ", "-", "_", ".")
@@ -185,6 +196,45 @@ async def _download_file_content(
     await update_item_progress(item_id, 100, "")
     await mark_completed(item_id)
     logging.info(f"Download completed for item {item_id}")
+
+
+async def _handle_html_response(
+    response: aiohttp.ClientResponse,
+    item_id: str,
+    item: QueueItem,
+    cancel_event: asyncio.Event,
+    retry_count: int = 0,
+    max_retries: int = 3,
+) -> None:
+    if retry_count >= max_retries:
+        await mark_failed(item_id, "Max retries reached for HTML response")
+        return
+
+    # Exponential backoff: 2^retry_count seconds
+    wait_time = 2 ** retry_count
+    logging.info(f"Received HTML response, retrying in {wait_time} seconds...")
+    await asyncio.sleep(wait_time)
+
+    # Retry the download
+    async with aiohttp.ClientSession() as session:
+        form_action = await _get_download_form(session, item["url"])
+        if not form_action:
+            await mark_failed(item_id, "Could not get download form after retry")
+            return
+
+        try:
+            headers = {"User-Agent": USER_AGENT}
+            async with session.post(
+                form_action, data={}, headers=headers, timeout=None
+            ) as new_response:
+                if new_response.status != 200:
+                    await mark_failed(item_id, f"Retry failed: {new_response.status}")
+                    return
+
+                await _download_file_content(new_response, item_id, item, cancel_event)
+        except Exception as e:
+            logging.error(f"Retry failed: {e}")
+            await _handle_html_response(response, item_id, item, cancel_event, retry_count + 1)
 
 
 async def _perform_download(
