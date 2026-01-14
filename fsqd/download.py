@@ -125,6 +125,14 @@ def _is_valid_content_type(content_type: str) -> bool:
             "application/force-download",
             "video/",
             "audio/",
+            "image/",
+            "application/pdf",
+            "application/zip",
+            "application/x-rar-compressed",
+            "application/x-tar",
+            "application/x-gzip",
+            "application/x-bzip2",
+            "application/x-7z-compressed",
         ]
     ) or "application/octet-stream" in content_type
 
@@ -194,43 +202,6 @@ async def _download_file_content(
     logging.info(f"Download completed for item {item_id}")
 
 
-async def _handle_html_response(
-    response: aiohttp.ClientResponse,
-    item_id: str,
-    item: QueueItem,
-    cancel_event: asyncio.Event,
-    retry_count: int = 0,
-    max_retries: int = 3,
-) -> None:
-    if retry_count >= max_retries:
-        await mark_failed(item_id, "Max retries reached for HTML response")
-        return
-
-    # Exponential backoff: 2^retry_count seconds
-    wait_time = 2 ** retry_count
-    logging.info(f"Received HTML response, retrying in {wait_time} seconds...")
-    await asyncio.sleep(wait_time)
-
-    # Retry the download
-    async with aiohttp.ClientSession() as session:
-        form_action = await _get_download_form(session, item["url"])
-        if not form_action:
-            await mark_failed(item_id, "Could not get download form after retry")
-            return
-
-        try:
-            headers = {"User-Agent": USER_AGENT}
-            async with session.post(
-                form_action, data={}, headers=headers, timeout=None
-            ) as new_response:
-                if new_response.status != 200:
-                    await mark_failed(item_id, f"Retry failed: {new_response.status}")
-                    return
-
-                await _download_file_content(new_response, item_id, item, cancel_event)
-        except Exception as e:
-            logging.error(f"Retry failed: {e}")
-            await _handle_html_response(response, item_id, item, cancel_event, retry_count + 1)
 
 
 async def _perform_download(
@@ -239,6 +210,8 @@ async def _perform_download(
     form_action: str,
     item: QueueItem,
     cancel_event: asyncio.Event,
+    retry_count: int = 0,
+    max_retries: int = 3,
 ) -> None:
     headers = {"User-Agent": USER_AGENT}
     async with session.post(
@@ -252,10 +225,34 @@ async def _perform_download(
         content_type = response.headers.get("Content-Type", "").lower()
         if not _is_valid_content_type(content_type):
             logging.warning(f"Unexpected content type: {content_type}")
-            if "text/html" in content_type:
-                await _handle_html_response(response, item_id, item, cancel_event)
+            if retry_count >= max_retries:
+                await mark_failed(item_id, f"Max retries reached for invalid content type: {content_type}")
                 return
-            await mark_failed(item_id, f"Invalid content type: {content_type}")
+
+            # Exponential backoff: 2^retry_count seconds
+            wait_time = 2 ** retry_count
+            logging.info(f"Received invalid content type, retrying in {wait_time} seconds...")
+            await asyncio.sleep(wait_time)
+
+            # Retry the download
+            try:
+                form_action = await _get_download_form(session, item["url"])
+                if not form_action:
+                    await mark_failed(item_id, "Could not get download form after retry")
+                    return
+
+                await _perform_download(
+                    session, 
+                    item_id, 
+                    form_action, 
+                    item, 
+                    cancel_event, 
+                    retry_count + 1,
+                    max_retries
+                )
+            except Exception as e:
+                logging.error(f"Retry failed: {e}")
+                await mark_failed(item_id, str(e))
             return
 
         await _download_file_content(response, item_id, item, cancel_event)
