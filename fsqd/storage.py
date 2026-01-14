@@ -100,14 +100,42 @@ async def add_to_queue(item: QueueItem) -> None:
 
 
 async def remove_from_queue(item_id: str) -> None:
-    logging.info(f"Removing item {item_id} from active queue")
+    """Remove item from any queue (active, failed, completed, downloaded)"""
+    logging.info(f"Removing item {item_id}")
+    
+    # Try to remove from active queue
     active = await get_active()
     idx = _find_index(active, item_id)
     if idx is not None:
         del active[idx]
         await _save_list(ACTIVE_KEY, active)
-    else:
-        logging.warning(f"Item {item_id} not found in active queue for removal")
+        return
+    
+    # Try to remove from failed queue
+    failed = await get_failed()
+    idx = _find_index(failed, item_id)
+    if idx is not None:
+        del failed[idx]
+        await _save_list(FAILED_KEY, failed)
+        return
+        
+    # Try to remove from completed queue
+    completed = await get_completed()
+    idx = _find_index(completed, item_id)
+    if idx is not None:
+        del completed[idx]
+        await _save_list(COMPLETED_KEY, completed)
+        return
+        
+    # Try to remove from downloaded queue
+    downloaded = await get_downloaded()
+    idx = _find_index(downloaded, item_id)
+    if idx is not None:
+        del downloaded[idx]
+        await _save_list(DOWNLOADED_KEY, downloaded)
+        return
+        
+    logging.warning(f"Item {item_id} not found in any queue for removal")
 
 
 async def move_in_queue(item_id: str, direction: str) -> None:
