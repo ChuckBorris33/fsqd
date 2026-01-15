@@ -91,13 +91,13 @@
                             name="url"
                             placeholder="https://fastshare.cloud/..."
                             class="flex-1 px-4 py-2 bg-background border border-muted-foreground/30 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                            hx-on:htmx:after-request="if(event.detail.successful) this.value=''"
                         />
                         <button
                             hx-post="/api/queue"
                             hx-include="#link-input"
                             hx-target="#queue-list"
                             hx-swap="innerHTML"
+                            hx-on::after-request="if(event.detail.successful) document.getElementById('link-input').value = ''"
                             class="px-5 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background transition-colors flex items-center justify-center gap-2"
                         >
                             <span class="material-icons">add_to_queue</span>
