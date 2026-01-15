@@ -1,6 +1,6 @@
 [project]
 name = "fsqd"
-version = "0.1.0"
+version = "1.0.0"
 description = "Web UI for queuing downloads from fasthare.cloud"
 authors = [
     { name = "Boris", email = "boris@example.com" }
@@ -13,3 +13,6 @@ dependencies = [
     "requests",
 ]
 requires-python = ">=3.10"
+
+[project.scripts]
+fsqd = "fsqd.main:main"
