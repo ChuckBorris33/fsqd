@@ -2,6 +2,8 @@
 
 **fsqd** is a simple, web-based queue manager for downloading files from `fastshare.cloud`.
 
+<img width="1001" height="959" alt="Screenshot From 2026-01-15 12-29-19" src="https://github.com/user-attachments/assets/c346f519-f94d-4532-a1b2-e5b52e1b35a6" />
+
 ## Disclaimer
 
 This project was created for personal use. There is no intention to maintain it outside of my personal usage needs.
