@@ -118,23 +118,27 @@ def _format_speed(speed_bps: float) -> str:
 
 def _is_valid_content_type(content_type: str) -> bool:
     """Check if content type is valid for download"""
-    return any(
-        content_type.startswith(prefix)
-        for prefix in [
-            "application/octet-stream",
-            "application/force-download",
-            "video/",
-            "audio/",
-            "image/",
-            "application/pdf",
-            "application/zip",
-            "application/x-rar-compressed",
-            "application/x-tar",
-            "application/x-gzip",
-            "application/x-bzip2",
-            "application/x-7z-compressed",
-        ]
-    ) or "application/octet-stream" in content_type
+    return (
+        any(
+            content_type.startswith(prefix)
+            for prefix in [
+                "application/octet-stream",
+                "application/force-download",
+                "video/",
+                "audio/",
+                "image/",
+                "application/pdf",
+                "application/zip",
+                "application/x-rar-compressed",
+                "application/x-tar",
+                "application/x-gzip",
+                "application/x-bzip2",
+                "application/x-7z-compressed",
+            ]
+        )
+        or "application/octet-stream" in content_type
+    )
+
 
 async def _download_file_content(
     response: aiohttp.ClientResponse,
@@ -143,7 +147,7 @@ async def _download_file_content(
     cancel_event: asyncio.Event,
 ) -> None:
     # Content type check removed since it's already done in _perform_download
-    
+
     # Rest of the existing download logic...
     filename = item.get("title", "download")
     filename = "".join(
@@ -202,60 +206,64 @@ async def _download_file_content(
     logging.info(f"Download completed for item {item_id}")
 
 
-
-
 async def _perform_download(
     session: aiohttp.ClientSession,
     item_id: str,
     form_action: str,
     item: QueueItem,
     cancel_event: asyncio.Event,
-    retry_count: int = 0,
-    max_retries: int = 3,
+    max_retries: int = 5,
 ) -> None:
-    headers = {"User-Agent": USER_AGENT}
-    async with session.post(
-        form_action, data={}, headers=headers, timeout=None
-    ) as response:
-        if response.status != 200:
-            logging.error(f"Download request failed for {item_id}: {response.status}")
-            await mark_failed(item_id, f"Download request failed: {response.status}")
-            return
-
-        content_type = response.headers.get("Content-Type", "").lower()
-        if not _is_valid_content_type(content_type):
-            logging.warning(f"Unexpected content type: {content_type}")
-            if retry_count >= max_retries:
-                await mark_failed(item_id, f"Max retries reached for invalid content type: {content_type}")
-                return
-
-            # Exponential backoff: 2^retry_count seconds
-            wait_time = 2 ** retry_count
-            logging.info(f"Received invalid content type, retrying in {wait_time} seconds...")
-            await asyncio.sleep(wait_time)
-
-            # Retry the download
-            try:
-                form_action = await _get_download_form(session, item["url"])
-                if not form_action:
-                    await mark_failed(item_id, "Could not get download form after retry")
+    retry_count = 0
+    while retry_count <= max_retries:
+        try:
+            headers = {"User-Agent": USER_AGENT}
+            async with session.post(
+                form_action, data={}, headers=headers, timeout=None
+            ) as response:
+                if response.status != 200:
+                    logging.error(
+                        f"Download request failed for {item_id}: {response.status}"
+                    )
+                    await mark_failed(
+                        item_id, f"Download request failed: {response.status}"
+                    )
                     return
 
-                await _perform_download(
-                    session, 
-                    item_id, 
-                    form_action, 
-                    item, 
-                    cancel_event, 
-                    retry_count + 1,
-                    max_retries
-                )
-            except Exception as e:
-                logging.error(f"Retry failed: {e}")
-                await mark_failed(item_id, str(e))
-            return
+                content_type = response.headers.get("Content-Type", "").lower()
+                if _is_valid_content_type(content_type):
+                    await _download_file_content(response, item_id, item, cancel_event)
+                    return
 
-        await _download_file_content(response, item_id, item, cancel_event)
+                # Invalid content type
+                logging.warning(f"Unexpected content type: {content_type}")
+                if retry_count >= max_retries:
+                    await mark_failed(
+                        item_id,
+                        f"Max retries reached for invalid content type: {content_type}",
+                    )
+                    return
+
+                # Exponential backoff: 2^(retry_count + 1) seconds
+                wait_time = 2 ** (retry_count + 1)
+                logging.info(
+                    f"Received invalid content type, retrying in {wait_time} seconds..."
+                )
+                await asyncio.sleep(wait_time)
+
+                # Get new form action for retry
+                form_action = await _get_download_form(session, item["url"]) or ""
+                if not form_action:
+                    await mark_failed(
+                        item_id, "Could not get download form after retry"
+                    )
+                    return
+
+                retry_count += 1
+        except Exception as e:
+            logging.error(f"Error in download attempt {retry_count}: {e}")
+            await mark_failed(item_id, str(e))
+            return
 
 
 async def download_worker() -> None:
