@@ -22,7 +22,7 @@ def inject_version():
     with open(index_html_path, "r") as f:
         html_content = f.read()
 
-    version_pattern = r'<span\s+id="app-version">[^<]*</span>'
+    version_pattern = r'<span\s*id="app-version"\s*>[^<]*</span>'
     version_replacement = f'<span id="app-version">{version}</span>'
     html_content = re.sub(version_pattern, version_replacement, html_content)
 

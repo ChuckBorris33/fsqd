@@ -18,6 +18,23 @@ def get_version():
     return match.group(1) if match else None
 
 
+def get_last_committed_version():
+    try:
+        result = subprocess.run(
+            ["git", "show", "HEAD:pyproject.toml"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=PROJECT_ROOT,
+        )
+        content = result.stdout
+        match = re.search(r'version\s*=\s*"([^"]+)"', content)
+        return match.group(1) if match else None
+    except subprocess.CalledProcessError:
+        # If no commits yet or error, return None
+        return None
+
+
 def set_version(version: str):
     with open(PYPROJECT_PATH, "r") as f:
         content = f.read()
@@ -30,8 +47,17 @@ def run_inject():
     subprocess.run([sys.executable, str(INJECT_SCRIPT)], check=True)
 
 
-def bump(part: str):
+def bump(part: str, from_pre_commit: bool = False):
     current = get_version()
+    if not current:
+        raise ValueError("No current version found in pyproject.toml")
+    if from_pre_commit:
+        last_committed = get_last_committed_version()
+        if last_committed and current != last_committed:
+            print(
+                f"Version already modified from {last_committed} to {current}, skipping bump"
+            )
+            return
     major, minor, patch = current.split(".")
     if part == "major":
         major = str(int(major) + 1)
@@ -61,12 +87,13 @@ def main():
         return
 
     cmd = sys.argv[1]
+    from_pre_commit = len(sys.argv) > 2 and sys.argv[2] == "--pre-commit"
     if cmd == "show":
         show()
     elif cmd in ("patch", "minor", "major"):
-        bump(cmd)
+        bump(cmd, from_pre_commit)
     else:
-        print(f"Usage: {sys.argv[0]} [show|patch|minor|major]")
+        print(f"Usage: {sys.argv[0]} [show|patch|minor|major] [--pre-commit]")
         sys.exit(1)
 
 

@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: bump-version
+        name: Bump patch version
+        entry: bash -c "python scripts/version.py patch --pre-commit && git add pyproject.toml static/index.html"
+        language: system
+        pass_filenames: false
