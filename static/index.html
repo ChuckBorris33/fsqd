@@ -67,7 +67,7 @@
                         >
                         FSQD - fastshare.cloud Downloader
                         <span class="text-sm text-muted-foreground font-normal ml-2"
-                            >v<span id="app-version">1.1.1</span></span
+                            >v<span id="app-version">1.1.2</span></span
                         >
                     </h1>
                 </div>
@@ -97,7 +97,7 @@
                             hx-include="#link-input"
                             hx-target="#queue-list"
                             hx-swap="innerHTML"
-                            hx-on::after-request="if(event.detail.successful) document.getElementById('link-input').value = ''"
+                            hx-on::after-request="document.getElementById('link-input').value = ''"
                             class="px-5 py-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background transition-colors flex items-center justify-center gap-2"
                         >
                             <span class="material-icons">add_to_queue</span>
