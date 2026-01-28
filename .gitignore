@@ -1,0 +1,27 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Output of build tools
+/build/
+bin/
+fsqdgo
+
+# Dependency directories (remove the comment below if you use vendoring)
+/vendor/
+
+# Project-specific
+data/
+downloads/
+
+# OS and editor files
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/

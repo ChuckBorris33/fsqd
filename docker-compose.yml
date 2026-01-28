@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    container_name: fsqdgo
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - PORT=${PORT:-8080}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DATA_DIR=/app/data
+      - DOWNLOAD_DIR=/app/downloads
+    volumes:
+      - ./data:/app/data:z
+      - ./downloads:/app/downloads:z
+    restart: unless-stopped
