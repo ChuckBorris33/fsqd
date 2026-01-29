@@ -69,7 +69,7 @@ func (h *Hub) StartTicker() {
 }
 
 func (h *Hub) BroadcastUpdate() {
-	h.broadcast <- []byte("update")
+	h.broadcast <- []byte(`{"type": "update"}`)
 }
 
 func (h *Hub) BroadcastProgress(update *ProgressUpdate) {
