@@ -26,6 +26,7 @@ func main() {
 	store := storage.New(cfg.DataDir)
 	hub := websocket.NewHub()
 	go hub.Run()
+	go hub.StartTicker()
 	downloader := download.New(store, hub, cfg.DownloadDir)
 	downloader.Start()
 
