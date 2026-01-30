@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,11 +23,12 @@ import (
 )
 
 const (
-	chunkSize     = 1024 * 1024
-	progressDelay = 4 * time.Second
-	userAgent     = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-	maxRetries    = 3
-	retryDelay    = 3 * time.Second
+	chunkSize         = 1024 * 1024
+	progressDelay     = 4 * time.Second
+	userAgent         = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+	maxRetries        = 5
+	initialRetryDelay = 2 * time.Second
+	maxRetryDelay     = 30 * time.Second
 )
 
 type Downloader struct {
@@ -114,6 +117,8 @@ func (d *Downloader) getDownloadURL(pageURL string) (string, error) {
 	})
 
 	if formAction == "" {
+		html, _ := doc.Html()
+		slog.Error("Could not find download form", "url", pageURL, "html", html)
 		return "", fmt.Errorf("download form not found")
 	}
 
@@ -134,36 +139,54 @@ func (d *Downloader) downloadFile(item *models.Item, formURL string, cancel <-ch
 
 		slog.Info("Download attempt", "id", item.Id, "attempt", attempt, "max", maxRetries)
 
-		resp, err := d.doDownloadRequest(formURL)
-		if err != nil {
-			lastErr = err
-			if attempt < maxRetries {
-				slog.Warn("Download request failed, retrying", "id", item.Id, "error", err, "retryIn", retryDelay)
-				time.Sleep(retryDelay)
-				continue
+		err := d.attemptDownload(item, formURL, cancel)
+		if err == nil {
+			return nil // Success
+		}
+
+		lastErr = err
+
+		if attempt < maxRetries {
+			// Exponential backoff with jitter
+			backoff := float64(initialRetryDelay) * math.Pow(2, float64(attempt-1))
+			if backoff > float64(maxRetryDelay) {
+				backoff = float64(maxRetryDelay)
 			}
-			return fmt.Errorf("download failed after %d attempts: %w", maxRetries, lastErr)
-		}
+			jitter := (rand.Float64() - 0.5) * backoff
+			delay := time.Duration(backoff + jitter)
 
-		filePath := filepath.Join(d.downloadDir, sanitizeName(item.Name))
-		file, err := os.Create(filePath)
-		if err != nil {
-			return err
+			slog.Warn("Download attempt failed, retrying", "id", item.Id, "error", err, "retryIn", delay)
+			time.Sleep(delay)
 		}
-		defer file.Close()
-
-		if err := d.copyWithProgress(resp.Body, file, item, cancel); err != nil {
-			return err
-		}
-
-		return nil
 	}
 
-	return lastErr
+	return fmt.Errorf("download failed after %d attempts: %w", maxRetries, lastErr)
+}
+
+func (d *Downloader) attemptDownload(item *models.Item, formURL string, cancel <-chan struct{}) error {
+	resp, err := d.doDownloadRequest(formURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.ContentLength > 0 {
+		item.Size = resp.ContentLength
+	}
+
+	filePath := filepath.Join(d.downloadDir, sanitizeName(item.Name))
+	// Overwrite file on each attempt
+	file, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	return d.copyWithProgress(resp.Body, file, item, cancel)
 }
 
 func (d *Downloader) doDownloadRequest(formURL string) (*http.Response, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{}
 	req, _ := http.NewRequest("POST", formURL, nil)
 	req.Header.Set("User-Agent", userAgent)
 
@@ -171,13 +194,14 @@ func (d *Downloader) doDownloadRequest(formURL string) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
 		return nil, fmt.Errorf("server error: %s", resp.Status)
 	}
 
 	if resp.ContentLength == 0 {
+		resp.Body.Close()
 		return nil, fmt.Errorf("empty response, no content")
 	}
 
@@ -206,6 +230,7 @@ func (d *Downloader) doDownloadRequest(formURL string) (*http.Response, error) {
 	}
 
 	if !valid {
+		resp.Body.Close()
 		return nil, fmt.Errorf("unexpected content type: %s", contentType)
 	}
 
@@ -218,7 +243,7 @@ func (d *Downloader) copyWithProgress(src io.Reader, dst *os.File, item *models.
 	lastReport := time.Now()
 	reportedBytes := 0
 
-	progress := &websocket.ProgressUpdate{ItemID: item.Id}
+	progress := &websocket.ProgressUpdate{Type: "progress", ItemID: item.Id}
 
 	for {
 		select {

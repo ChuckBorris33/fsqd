@@ -627,9 +627,12 @@
                             try {
                                 const msg = JSON.parse(event.data);
                                 if (msg.type === "progress") {
-                                    this.progressMap[msg.itemId] = {
-                                        progress: msg.progress,
-                                        downloadSpeed: msg.downloadSpeed
+                                    this.progressMap = {
+                                        ...this.progressMap,
+                                        [msg.itemId]: {
+                                            progress: msg.progress,
+                                            downloadSpeed: msg.downloadSpeed,
+                                        },
                                     };
                                 } else if (msg.type === "update") {
                                     this.getQueue();
